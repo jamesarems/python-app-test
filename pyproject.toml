@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "flaskapp"
+version = "0.1.0"
+description = ""
+authors = ["jamesarems <jamesarems@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+requests = "^2.28.2"
+flask = "^2.2.3"
+snowplow-tracker = "^0.13.0"
+pysnyk = "^0.9.5"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+flaskapp = "flaskapp.app:main"
