@@ -1,0 +1,171 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: snowplow-test
+  name: collector-nsq
+  labels:
+    app: collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: collector
+  template:
+    metadata:
+      labels:
+        app: collector
+    spec:
+      containers:
+      - name: collector-nsq
+        image: snowplow/scala-stream-collector-nsq:2.8.3-rc4-distroless
+        args: [ "--config", "/snowplow/config/snowplow-stream-collector.hocon" ]
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        ports:
+        - containerPort: 8080
+          name: collector-port
+        volumeMounts:
+        - mountPath: snowplow/config/snowplow-stream-collector.hocon
+          name: collector-config
+          subPath: snowplow-stream-collector.hocon
+      restartPolicy: Always
+      volumes:
+      - name: collector-config
+        configMap:
+          name: collector-config
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collector-config
+  namespace: snowplow-test
+
+data:
+  snowplow-stream-collector.hocon: |
+    collector {
+      interface = "0.0.0.0"
+      port = 8080
+
+      paths {}
+
+      p3p {
+        policyRef = "/w3c/p3p.xml"
+        CP = "NOI DSP COR NID PSA OUR IND COM NAV STA"
+      }
+
+      crossDomain {
+        enabled = false
+        domains = ["*"]
+        secure = true
+      }
+
+      cookie {
+        enabled = true
+        expiration = "365 days" # e.g. "365 days"
+        name = sp
+        secure = true
+        sameSite = "None"
+        httpOnly = false
+      }
+
+      cookieBounce {
+        enabled = false
+        name = "n3pc"
+        fallbackNetworkUserId = "00000000-0000-4000-A000-000000000000"
+      }
+
+      doNotTrackCookie {
+        enabled = false
+        name = dnt
+        value = 1
+      }
+
+      rootResponse {
+        enabled = true
+        statusCode = 302
+        headers = {
+            Location = "/home",
+        }
+        body = "302, redirecting"
+      }
+
+      enableDefaultRedirect = false
+
+      redirectMacro {
+        enabled = false
+        placeholder = "[TOKEN]"
+      }
+
+      cors {
+        accessControlMaxAge = 10 seconds
+      }
+
+      prometheusMetrics.enabled = false
+
+      streams {
+        good = RawEvents
+        bad = BadRawEvents
+        useIpAddressAsPartitionKey = false
+
+        sink {
+          enabled = nsq
+          host = nsqd-svc.snowplow-test.svc.cluster.local
+          port = 4150
+        }
+
+        buffer {
+          byteLimit = 4000000
+          recordLimit = 500 # Not supported by Kafka; will be ignored
+          timeLimit = 5000
+        }
+      }
+
+      telemetry {
+          disable = true
+          interval = 60 minutes
+          method = POST
+          url = collector-g.snowplowanalytics.com
+          port = 443
+          secure = true
+      }
+      preTerminationPeriod = 0 seconds
+    }
+
+    akka {
+      loglevel = WARNING
+      loggers = ["akka.event.slf4j.Slf4jLogger"]
+
+      http.server {
+        remote-address-header = on
+        raw-request-uri-header = on
+        parsing {
+          max-uri-length = 32768
+          uri-parsing-mode = relaxed
+        }
+      }
+    }
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: collector-svc
+  namespace: snowplow-test
+spec:
+  selector:
+    app: collector
+  type: NodePort
+  ports:
+  - name: collector-http
+    nodePort: 31052
+    protocol: TCP
+    port: 80
+    targetPort: collector-port

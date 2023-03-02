@@ -1,0 +1,163 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: snowplow-test
+  name: nslookup
+  labels:
+    app: nslookup
+    org: snowplow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nslookup
+  template:
+    metadata:
+      labels:
+        app: nslookup
+    spec:
+      containers:
+      - name: nslookup
+        image: nsqio/nsq:v1.2.1
+        args: [ "/nsqlookupd", "--broadcast-address=0.0.0.0" ]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 4160
+          name: nslookup-port-a
+        - containerPort: 4161
+          name: nslookup-port-b
+      restartPolicy: Always
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: snowplow-test
+  name: nsqd
+  labels:
+    app: nsqd
+    org: snowplow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nsqd
+  template:
+    metadata:
+      labels:
+        app: nsqd
+    spec:
+      containers:
+      - name: nsqd
+        image: nsqio/nsq:v1.2.1
+        args: [ "/nsqd", "--broadcast-address=0.0.0.0", "--lookupd-tcp-address=nslookup-svc.snowplow-test.svc.cluster.local:4160"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 4150
+          name: nsqd-port-a
+        - containerPort: 4151
+          name: nsqd-port-b
+      restartPolicy: Always
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: snowplow-test
+  name: nsq-admin
+  labels:
+    app: nsq-admin
+    org: snowplow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nsq-admin
+  template:
+    metadata:
+      labels:
+        app: nsq-admin
+    spec:
+      containers:
+      - name: nsq-admin
+        image: nsqio/nsq:v1.2.1
+        args: [ "/nsqadmin", "--lookupd-http-address=nslookup-svc.snowplow-test.svc.cluster.local:4161", "--base-path=/nsqadmin" ]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 4171
+          name: nsq-admin-http
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nslookup-svc
+  namespace: snowplow-test
+spec:
+  selector:
+    app: nslookup
+  ports:
+  - name: nslookup-4160
+    protocol: TCP
+    port: 4160
+    targetPort: nslookup-port-a
+  - name: nslookup-4161
+    protocol: TCP
+    port: 4161
+    targetPort: nslookup-port-b
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nsqd-svc
+  namespace: snowplow-test
+spec:
+  selector:
+    app: nsqd
+  ports:
+  - name: nsqd-4150
+    protocol: TCP
+    port: 4150
+    targetPort: nsqd-port-a
+  - name: nsqd-4151
+    protocol: TCP
+    port: 4151
+    targetPort: nsqd-port-b
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nsq-admin-svc
+  namespace: snowplow-test
+spec:
+  selector:
+    app: nsq-admin
+  type: NodePort
+  ports:
+  - name: nsq-admin-4171
+    protocol: TCP
+    nodePort: 31051
+    port: 4171
+    targetPort: nsq-admin-http

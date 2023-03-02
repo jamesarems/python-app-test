@@ -1,0 +1,27 @@
+---
+apiVersion: k3d.io/v1alpha4
+kind: Simple
+metadata:
+  name: mylab-2
+servers: 1
+agents: 0
+image: docker.io/rancher/k3s:v1.26.1-k3s1
+network: my-lab-net
+options:
+  k3d:
+    disableLoadbalancer: false
+  k3s:
+    extraArgs: # additional arguments passed to the `k3s server|agent` command; same as `--k3s-arg`
+      - arg: --disable=metrics-server
+        nodeFilters:
+          - server:*
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*
+      - arg: --disable=local-storage
+        nodeFilters:
+          - server:*
+      - arg: --datastore-endpoint=nats://nats:nats@host.docker.internal:4222/?bucket=my-lab-2
+        nodeFilters:
+          - server:*
+
